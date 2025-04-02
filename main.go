@@ -75,8 +75,8 @@ func fetchSSMParams(ctx context.Context, client *ssm.Client, path string) (map[s
 	for {
 		out, err := client.GetParametersByPath(ctx, &ssm.GetParametersByPathInput{
 			Path:           aws.String(path),
-			WithDecryption: true,
-			Recursive:      true,
+			WithDecryption: aws.Bool(true),
+			Recursive:      aws.Bool(true),
 			NextToken:      aws.String(nextToken),
 		})
 		if err != nil {
