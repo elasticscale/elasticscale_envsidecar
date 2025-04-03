@@ -8,5 +8,5 @@ RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 COPY --from=builder /envsidecar /usr/local/bin/envsidecar
 
-VOLUME ["/var/.env"]
+VOLUME ["/var/envshare"]
 ENTRYPOINT ["envsidecar"]
