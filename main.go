@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
-const envFilePath = "/var/.env"
+const envFilePath = "/var/envshare/.env"
 
 func main() {
 	ssmPath := os.Getenv("SSM_PATH")
