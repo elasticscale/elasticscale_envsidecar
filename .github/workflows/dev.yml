@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - dev
+    paths:
+      - '.github/workflows/**'
+      - 'Dockerfile'
+      - 'go.mod'
+      - 'go.sum'
+      - 'main.go'
 
 permissions:
   id-token: write

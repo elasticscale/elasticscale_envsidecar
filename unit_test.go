@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
+	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"github.com/aws/aws-sdk-go-v2/service/ssm/types as ssmtypes"
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 // Mock SSM client
-
 type mockSSMClient struct {
 	params map[string]string
 	error  error
@@ -34,7 +34,6 @@ func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetP
 }
 
 // Mock Secrets Manager client
-
 type mockSecretsManagerClient struct {
 	secrets map[string]string
 	error   error
@@ -47,7 +46,7 @@ func (m *mockSecretsManagerClient) ListSecrets(ctx context.Context, input *secre
 	out := &secretsmanager.ListSecretsOutput{}
 	for name := range m.secrets {
 		secretName := name
-		out.SecretList = append(out.SecretList, types.SecretListEntry{Name: &secretName})
+		out.SecretList = append(out.SecretList, smtypes.SecretListEntry{Name: &secretName})
 	}
 	return out, nil
 }
