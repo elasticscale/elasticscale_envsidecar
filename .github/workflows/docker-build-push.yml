@@ -43,6 +43,17 @@ jobs:
         run: |
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
+      - name: Generate semantic version (production)
+        if: github.ref == 'refs/heads/main'
+        id: semver
+        uses: paulhatch/semantic-version@v5
+        with:
+          tag_prefix: ""
+          major_pattern: "BREAKING CHANGE:"
+          minor_pattern: "feat:"
+          patch_pattern: "fix:"
+          fallback_patch: true
+
       - name: Build and push Docker image to production
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v2
@@ -52,6 +63,7 @@ jobs:
           tags: |
             public.ecr.aws/elasticscale/elastic-prod-envsidecar:latest
             public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ env.COMMIT_SHA_SHORT }}
+            public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ steps.semver.outputs.version }}
 
       - name: Logout from Amazon ECR public (production)
         if: github.ref == 'refs/heads/main'
@@ -69,6 +81,17 @@ jobs:
         run: |
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
+      - name: Generate semantic version (staging)
+        if: github.ref == 'refs/heads/dev'
+        id: semver
+        uses: paulhatch/semantic-version@v5
+        with:
+          tag_prefix: ""
+          major_pattern: "BREAKING CHANGE:"
+          minor_pattern: "feat:"
+          patch_pattern: "fix:"
+          fallback_patch: true
+
       - name: Build and push Docker image to staging
         if: github.ref == 'refs/heads/dev'
         uses: docker/build-push-action@v2
@@ -78,6 +101,7 @@ jobs:
           tags: |
             public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:latest
             public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ env.COMMIT_SHA_SHORT }}
+            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ steps.semver.outputs.version }}
 
       - name: Logout from Amazon ECR public (staging)
         if: github.ref == 'refs/heads/dev'
