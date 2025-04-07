@@ -21,88 +21,86 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Create GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.ES_GITHUB_BP_APP_ID }}
+          private-key: ${{ secrets.ES_GITHUB_BP_APP_PRIVATE_KEY }}
+
+      - name: Checkout PR head or branch
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
       - name: Set truncated SHA
-        id: vars
         run: echo "COMMIT_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Configure AWS credentials for production
-        if: github.ref == 'refs/heads/main'
+      - name: Set env-specific variables
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "ROLE=arn:aws:iam::211125342127:role/elastic-prod-github" >> $GITHUB_ENV
+            echo "ECR_REPO=public.ecr.aws/elasticscale/elastic-prod-envsidecar" >> $GITHUB_ENV
+          elif [[ "${GITHUB_REF}" == "refs/heads/dev" ]]; then
+            echo "ROLE=arn:aws:iam::533267114484:role/elastic-staging-github" >> $GITHUB_ENV
+            echo "ECR_REPO=public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar" >> $GITHUB_ENV
+          fi
+
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::211125342127:role/elastic-prod-github
+          role-to-assume: ${{ env.ROLE }}
           aws-region: eu-west-1
 
-      - name: Log in to Amazon ECR public (production)
-        if: github.ref == 'refs/heads/main'
+      - name: Log in to Amazon ECR public
         run: |
           aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
 
-      - name: Generate semantic version (production)
-        if: github.ref == 'refs/heads/main'
-        id: semverprod
-        uses: paulhatch/semantic-version@v5
+      - name: Dry run tag + changelog generation
+        id: changelog
+        uses: mathieudutour/github-tag-action@v6.2
         with:
-          tag_prefix: ""
-          major_pattern: "BREAKING CHANGE:"
-          minor_pattern: "feat:"
-          patch_pattern: "fix:"
-          fallback_patch: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          dry_run: true
 
-      - name: Build and push Docker image to production
-        if: github.ref == 'refs/heads/main'
+      - name: Add CHANGELOG.md file
+        run: echo -e "${{ steps.changelog.outputs.changelog }}\n$(cat CHANGELOG.md 2>/dev/null)" > CHANGELOG.md
+
+      - name: Commit and push changelog
+        env:
+          CI_COMMIT_MESSAGE: "ci: update changelog file"
+          CI_COMMIT_AUTHOR: "GitHub Action"
+        run: |
+          sudo chmod -R ugo+rwX .
+          git add . || true
+          git pull
+          git config --global user.name "${{ env.CI_COMMIT_AUTHOR }}"
+          git config --global user.email "hello@elasticscale.com"
+          git commit -a -m "${{ env.CI_COMMIT_MESSAGE }}" || true
+          git push
+          echo "NEWREV=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Tag final commit
+        id: tag_version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          commit_sha: ${{ env.NEWREV }}
+          tag_prefix: ${{ github.ref == 'refs/heads/main' && 'prod-v' || 'stg-v' }}
+
+      - name: Build and push Docker image
         uses: docker/build-push-action@v2
         with:
           context: .
           push: true
           tags: |
-            public.ecr.aws/elasticscale/elastic-prod-envsidecar:latest
-            public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ env.COMMIT_SHA_SHORT }}
-            public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ steps.semverprod.outputs.version }}
+            ${{ env.ECR_REPO }}:latest
+            ${{ env.ECR_REPO }}:${{ env.COMMIT_SHA_SHORT }}
+            ${{ env.ECR_REPO }}:${{ steps.tag_version.outputs.new_tag }}
 
-      - name: Logout from Amazon ECR public (production)
-        if: github.ref == 'refs/heads/main'
-        run: docker logout public.ecr.aws
-
-      - name: Configure AWS credentials for staging
-        if: github.ref == 'refs/heads/dev'
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: arn:aws:iam::533267114484:role/elastic-staging-github
-          aws-region: eu-west-1
-
-      - name: Log in to Amazon ECR public (staging)
-        if: github.ref == 'refs/heads/dev'
-        run: |
-          aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
-
-      - name: Generate semantic version (staging)
-        if: github.ref == 'refs/heads/dev'
-        id: semverstg
-        uses: paulhatch/semantic-version@v5
-        with:
-          tag_prefix: ""
-          major_pattern: "BREAKING CHANGE:"
-          minor_pattern: "feat:"
-          patch_pattern: "fix:"
-          fallback_patch: true
-
-      - name: Build and push Docker image to staging
-        if: github.ref == 'refs/heads/dev'
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          push: true
-          tags: |
-            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:latest
-            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ env.COMMIT_SHA_SHORT }}
-            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ steps.semverstg.outputs.version }}
-
-      - name: Logout from Amazon ECR public (staging)
-        if: github.ref == 'refs/heads/dev'
+      - name: Logout from Amazon ECR public
         run: docker logout public.ecr.aws
