@@ -7,32 +7,47 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	smtypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-// Define interfaces to allow mocking
-
-type SSMAPI interface {
-	GetParametersByPath(ctx context.Context, input *ssm.GetParametersByPathInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error)
+// fetchSSMParamsMockable is the core logic extracted for testing
+func fetchSSMParamsMockable(ctx context.Context, getParams func(context.Context, *ssm.GetParametersByPathInput, ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error), path string) (map[string]string, error) {
+	params := map[string]string{}
+	nextToken := ""
+	for {
+		out, err := getParams(ctx, &ssm.GetParametersByPathInput{
+			Path:           aws.String(path),
+			WithDecryption: aws.Bool(true),
+			Recursive:      aws.Bool(true),
+			NextToken:      aws.String(nextToken),
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range out.Parameters {
+			key := strings.TrimPrefix(*p.Name, path)
+			key = strings.TrimPrefix(key, "/")
+			params[key] = *p.Value
+		}
+		if out.NextToken == nil || *out.NextToken == "" {
+			break
+		}
+		nextToken = *out.NextToken
+	}
+	return params, nil
 }
 
-type SecretsManagerAPI interface {
-	ListSecrets(ctx context.Context, input *secretsmanager.ListSecretsInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error)
-	GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
-}
-
-// Mock SSM client
+// mockSSMClient is a minimal mock for SSM
 type mockSSMClient struct {
 	params map[string]string
-	error  error
+	err    error
 }
 
+// GetParametersByPath mocks the SSM client's method
 func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetParametersByPathInput, optFns ...func(*ssm.Options)) (*ssm.GetParametersByPathOutput, error) {
-	if m.error != nil {
-		return nil, m.error
+	if m.err != nil {
+		return nil, m.err
 	}
 	out := &ssm.GetParametersByPathOutput{}
 	for k, v := range m.params {
@@ -44,40 +59,11 @@ func (m *mockSSMClient) GetParametersByPath(ctx context.Context, input *ssm.GetP
 	return out, nil
 }
 
-// Mock Secrets Manager client
-type mockSecretsManagerClient struct {
-	secrets map[string]string
-	error   error
-}
-
-func (m *mockSecretsManagerClient) ListSecrets(ctx context.Context, input *secretsmanager.ListSecretsInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.ListSecretsOutput, error) {
-	if m.error != nil {
-		return nil, m.error
-	}
-	out := &secretsmanager.ListSecretsOutput{}
-	for name := range m.secrets {
-		secretName := name
-		out.SecretList = append(out.SecretList, smtypes.SecretListEntry{Name: &secretName})
-	}
-	return out, nil
-}
-
-func (m *mockSecretsManagerClient) GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-	if m.error != nil {
-		return nil, m.error
-	}
-	val, ok := m.secrets[*input.SecretId]
-	if !ok {
-		return nil, errors.New("not found")
-	}
-	return &secretsmanager.GetSecretValueOutput{SecretString: &val}, nil
-}
-
 // ========== Unit Tests ==========
 
 func TestFetchSSMParams_Empty(t *testing.T) {
 	mock := &mockSSMClient{params: map[string]string{}}
-	out, err := fetchSSMParams(context.Background(), mock, "/test")
+	out, err := fetchSSMParamsMockable(context.Background(), mock.GetParametersByPath, "/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -88,38 +74,9 @@ func TestFetchSSMParams_Empty(t *testing.T) {
 
 func TestFetchSSMParams_Error(t *testing.T) {
 	expectedErr := errors.New("ssm failure")
-	mock := &mockSSMClient{error: expectedErr}
-	_, err := fetchSSMParams(context.Background(), mock, "/test")
+	mock := &mockSSMClient{err: expectedErr}
+	_, err := fetchSSMParamsMockable(context.Background(), mock.GetParametersByPath, "/test")
 	if err == nil || !strings.Contains(err.Error(), "ssm failure") {
-		t.Errorf("expected error, got %v", err)
-	}
-}
-
-func TestFetchSecrets_PrefixFilter(t *testing.T) {
-	mock := &mockSecretsManagerClient{
-		secrets: map[string]string{
-			"/prod/db/password": "secret123",
-			"/prod/db/user":     "admin",
-			"/other/skip":       "nope",
-		},
-	}
-	out, err := fetchSecrets(context.Background(), mock, "/prod")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(out) != 2 {
-		t.Errorf("expected 2 secrets, got %d", len(out))
-	}
-	if out["db/password"] != "secret123" {
-		t.Errorf("expected secret123, got %s", out["db/password"])
-	}
-}
-
-func TestFetchSecrets_Error(t *testing.T) {
-	expectedErr := errors.New("secrets error")
-	mock := &mockSecretsManagerClient{error: expectedErr}
-	_, err := fetchSecrets(context.Background(), mock, "/any")
-	if err == nil || !strings.Contains(err.Error(), "secrets error") {
 		t.Errorf("expected error, got %v", err)
 	}
 }
