@@ -45,7 +45,7 @@ jobs:
 
       - name: Generate semantic version (production)
         if: github.ref == 'refs/heads/main'
-        id: semver
+        id: semverprod
         uses: paulhatch/semantic-version@v5
         with:
           tag_prefix: ""
@@ -63,7 +63,7 @@ jobs:
           tags: |
             public.ecr.aws/elasticscale/elastic-prod-envsidecar:latest
             public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ env.COMMIT_SHA_SHORT }}
-            public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ steps.semver.outputs.version }}
+            public.ecr.aws/elasticscale/elastic-prod-envsidecar:${{ steps.semverprod.outputs.version }}
 
       - name: Logout from Amazon ECR public (production)
         if: github.ref == 'refs/heads/main'
@@ -83,7 +83,7 @@ jobs:
 
       - name: Generate semantic version (staging)
         if: github.ref == 'refs/heads/dev'
-        id: semver
+        id: semverstg
         uses: paulhatch/semantic-version@v5
         with:
           tag_prefix: ""
@@ -101,7 +101,7 @@ jobs:
           tags: |
             public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:latest
             public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ env.COMMIT_SHA_SHORT }}
-            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ steps.semver.outputs.version }}
+            public.ecr.aws/j0p9p4q2/elastic-staging-envsidecar:${{ steps.semverstg.outputs.version }}
 
       - name: Logout from Amazon ECR public (staging)
         if: github.ref == 'refs/heads/dev'
