@@ -1,4 +1,4 @@
-# elasticscale_envsidecar
+# Elasticscale Envsidecar
 
 This is a lightweight Go application designed to fetch environment variables from AWS Systems Manager (SSM) Parameter Store and writing them to a .env file for use by other processes. It’s ideal for sidecar containers in cloud-native environments, providing a simple way to manage and refresh parameters easily.
 
