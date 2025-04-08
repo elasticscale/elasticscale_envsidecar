@@ -1,1 +1,0 @@
-# elasticscale_envsidecar
