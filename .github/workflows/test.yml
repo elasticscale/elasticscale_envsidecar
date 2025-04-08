@@ -1,16 +1,11 @@
 name: Run Go Unit Tests
 
 on:
+  pull_request:
+    types: [opened, reopened, synchronize]
   schedule:
     - cron: '0 3 * * *' # every day at 3:00 AM UTC
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/test.yml'
-      - '**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-  pull_request:
 
 jobs:
   test:
