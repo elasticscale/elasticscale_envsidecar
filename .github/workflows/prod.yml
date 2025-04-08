@@ -1,4 +1,4 @@
-name: Version and Tag on PR Merge to Main
+name: Build and Push Docker Image to Prod
 
 on:
   pull_request_target:
